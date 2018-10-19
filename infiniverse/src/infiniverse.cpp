@@ -76,10 +76,9 @@ void infiniverse::assert_vectors_within_bounds(const uint8_t& land_id, const vec
 {
     land_table lands(_self, _self.value);
     land asset_land = lands.get(land_id);
-    std::pair<double, double> land_size = lat_long_to_meters(asset_land.lat_north_edge, asset_land.lat_south_edge,
-        asset_land.long_east_edge, asset_land.long_west_edge);
+
     eosio_assert(position.x > 0 && position.y == 0 && position.z > 0 &&
-        position.x < land_size.second && position.z < land_size.first,
+        position.x < 1 && position.z < 1,
         "Asset position is not within land bounds");
 
     eosio_assert(orientation.x >= 0 && orientation.x < 360 && orientation.y >= 0 &&
