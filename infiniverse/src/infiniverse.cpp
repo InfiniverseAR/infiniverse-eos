@@ -194,18 +194,7 @@ extern "C" {
         {
             switch(action)
             {
-                case "registerland"_n.value:
-                    execute_action( name(receiver), name(code), &infiniverse::registerland );
-                    break;
-                case "persistpoly"_n.value:
-                    execute_action( name(receiver), name(code), &infiniverse::persistpoly );
-                    break;
-                case "updatepersis"_n.value:
-                    execute_action( name(receiver), name(code), &infiniverse::updatepersis );
-                    break;
-                case "deletepersis"_n.value:
-                    execute_action( name(receiver), name(code), &infiniverse::deletepersis );
-                    break;
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(cleartables) )
             }
         }
         else if(code=="infinicoinio"_n.value && action=="transfer"_n.value) {
