@@ -194,7 +194,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(cleartables) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis) )
             }
         }
         else if(code=="infinicoinio"_n.value && action=="transfer"_n.value) {
