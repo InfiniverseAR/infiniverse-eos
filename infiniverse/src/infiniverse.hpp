@@ -1,4 +1,5 @@
 #include <eosiolib/eosio.hpp>
+#include <eosiolib/asset.hpp>
 #include <eosiolib/time.hpp>
 
 using namespace eosio;
@@ -25,6 +26,12 @@ CONTRACT infiniverse : public contract
         vector3 position, vector3 orientation, vector3 scale);
 
     ACTION deletepersis(uint64_t persistent_id);
+
+    ACTION opendeposit(name owner);
+
+    ACTION closedeposit(name owner);
+
+    ACTION depositinf(name from, name to, asset quantity, std::string memo);
 
     private:
 
@@ -92,6 +99,16 @@ CONTRACT infiniverse : public contract
         indexed_by<"byuser"_n, const_mem_fun<poly, uint64_t, &poly::get_user>>>
         poly_table;
 
+    TABLE deposit {
+        name owner;
+        asset balance;
+
+        uint64_t primary_key() const { return owner.value; }
+    };
+
+    typedef eosio::multi_index<"deposit"_n, deposit> deposit_table;
+    
+
     uint64_t add_poly(name user, std::string poly_id);
 
     uint64_t get_land_id_from_persistent(const persistent_table& persistents, const uint64_t& persistent_id);
@@ -99,4 +116,6 @@ CONTRACT infiniverse : public contract
     name require_land_owner_auth(const uint64_t& land_id);
 
     void assert_vectors_within_bounds(const vector3& position, const vector3& orientation, const vector3& scale);
+
+    void transfer_inf(name from, name to, asset quantity, std::string memo);
 };
