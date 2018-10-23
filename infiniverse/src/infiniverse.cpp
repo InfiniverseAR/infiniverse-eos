@@ -71,12 +71,9 @@ name infiniverse::require_land_owner_auth(const uint64_t& land_id)
     return lands_itr->owner;
 }
 
-void infiniverse::assert_vectors_within_bounds(const uint8_t& land_id, const vector3& position,
+void infiniverse::assert_vectors_within_bounds(const vector3& position,
     const vector3& orientation, const vector3& scale)
 {
-    land_table lands(_self, _self.value);
-    land asset_land = lands.get(land_id);
-
     eosio_assert(position.x > 0 && position.y == 0 && position.z > 0 &&
         position.x < 1 && position.z < 1,
         "Asset position is not within land bounds");
@@ -93,7 +90,7 @@ void infiniverse::persistpoly(uint64_t land_id, std::string poly_id,
         vector3 position, vector3 orientation, vector3 scale)
 {
     name user = require_land_owner_auth(land_id);
-    assert_vectors_within_bounds(land_id, position, orientation, scale);
+    assert_vectors_within_bounds(position, orientation, scale);
 
     uint64_t source = static_cast<uint64_t>(PlacementSource::POLY);
     uint64_t asset_id = add_poly(user, poly_id);
@@ -123,7 +120,7 @@ void infiniverse::updatepersis(uint64_t persistent_id, uint64_t land_id,
     {
         require_land_owner_auth(land_id);
     }
-    assert_vectors_within_bounds(land_id, position, orientation, scale);
+    assert_vectors_within_bounds(position, orientation, scale);
     persistents.modify(persistents_itr, same_payer, [&](auto &row) {
         row.land_id = land_id;
         row.position = position;

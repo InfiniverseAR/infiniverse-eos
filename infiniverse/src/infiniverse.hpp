@@ -98,6 +98,5 @@ CONTRACT infiniverse : public contract
 
     name require_land_owner_auth(const uint64_t& land_id);
 
-    void assert_vectors_within_bounds(const uint8_t& land_id, const vector3& position,
-        const vector3& orientation, const vector3& scale);
+    void assert_vectors_within_bounds(const vector3& position, const vector3& orientation, const vector3& scale);
 };
