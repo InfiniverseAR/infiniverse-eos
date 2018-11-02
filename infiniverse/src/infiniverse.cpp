@@ -1,67 +1,38 @@
 #include "infiniverse.hpp"
 #include "lat_long_functions.cpp"
+#include <eosiolib/transaction.hpp>
 
-const uint32_t seconds_in_one_year = 60 * 60 * 24 * 365;
+const uint32_t seconds_in_one_day = 60 * 60 * 24;
+const uint32_t seconds_in_one_week = seconds_in_one_day * 7;
+const uint32_t seconds_in_one_year = seconds_in_one_day * 365;
 const uint32_t max_land_length = 100;
 const symbol inf_symbol = symbol("INF", 4);
 const name inf_account = "infinicoinio"_n;
-const uint32_t inf_per_sqm = 10;
+const uint32_t reg_inf_per_sqm = 10;
 
 void infiniverse::registerland(name owner, double lat_north_edge,
     double long_east_edge, double lat_south_edge, double long_west_edge)
 {
     require_auth(owner);
 
-    eosio_assert(lat_north_edge > lat_south_edge, "North edge must have greater latitude than south edge");
-    // Temporary restriction of registering land across the antimeridian to simplify land intersection algorithm
-    eosio_assert(long_east_edge > long_west_edge, "East edge must have greater longitude than west edge");
-    // Temporary longitude limit to between -85 and 85 degrees to simplify display of lands on a mapping UI
-    eosio_assert(lat_north_edge < 85, "Latitude cannot be greater than 85 degrees");
-    eosio_assert(lat_south_edge > -85, "Latitude cannot be less than -85 degrees");
-    eosio_assert(long_east_edge <= 180 && long_east_edge > -180 && long_west_edge <= 180
-        && long_west_edge > -180, "Longitude must be between -180 and 180 degrees");
+    auction_table auctions(_self, _self.value);
+    auction land_auction = auctions.get(0, "The land auction has not started");
+    time_point_sec start_date = land_auction.start_date;
+    time_point_sec end_date = start_date + seconds_in_one_week;
+    time_point_sec current_date = time_point_sec(now());
+    eosio_assert(current_date >= end_date, "You cannot register land until the auction is complete");
 
-    std::pair<double, double> land_size = lat_long_to_meters(lat_north_edge, lat_south_edge,
-        long_east_edge, long_west_edge);
-
-    eosio_assert(land_size.first <= max_land_length && land_size.second <= max_land_length,
-        ("Land cannot exceed a length of " + std::to_string(max_land_length) + " meters on either side").c_str());
+    std::pair<double, double> land_size = assert_lat_long_values(lat_north_edge, long_east_edge,
+        lat_south_edge, long_west_edge);
 
     land_table lands(_self, _self.value);
+    check_land_intersections(lands, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
 
-    auto lat_north_index = lands.get_index<"bylatnorth"_n>();
-    auto lands_itr = lat_north_index.lower_bound(lat_south_edge);
-    // Add max_land_length meters to lat_north_edge to get upper bound
-    double upper_bound = lat_north_edge + meters_to_lat_dist(max_land_length);
+    landbid_table landbids(_self, _self.value);
+    check_landbid_intersections(landbids, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
 
-    while(lands_itr != lat_north_index.end() && lands_itr->lat_north_edge < upper_bound)
-    {
-        eosio_assert(
-            lands_itr->long_east_edge <= long_west_edge ||
-            lands_itr->long_west_edge >= long_east_edge ||
-            lands_itr->lat_south_edge >= lat_north_edge ||
-            // Required because lower bound includes equality case
-            lands_itr->lat_north_edge <= lat_south_edge,
-            "Intersecting land has already been registered");
-        lands_itr++;
-    }
-
-    // Calculate registration fee assuming each side is at least 1 meter to avoid abuse
-    // Otherwise a malicious user could register a very thin, long and cheap land
-    // This land would be useless but would stop anyone else from registering land over it
-    double land_area = std::max(land_size.first, 1.0) * std::max(land_size.second, 1.0);
-    int64_t reg_fee = static_cast<int64_t>(round(land_area * inf_per_sqm));
-    // multiply fee by 10000 to account for four decimal places of INF
-    asset inf_amount = asset(reg_fee * 10000, inf_symbol);
-
-    deposit_table deposits(_self, _self.value);
-    auto deposits_itr = deposits.find(owner.value);
-    eosio_assert(deposits_itr != deposits.end(), "User does not have a deposit opened");
-    eosio_assert(deposits_itr->balance >= inf_amount, "User's INF deposit balance is too low");
-
-    deposits.modify(deposits_itr, same_payer, [&](auto &row){
-        row.balance -= inf_amount;
-    });
+    asset inf_amount = calculate_land_reg_fee(land_size, reg_inf_per_sqm);
+    deduct_inf_deposit(owner, inf_amount);
 
     // The registration fee gets sent back to the token issuing account
     transfer_inf(_self, inf_account, inf_amount, "");
@@ -104,7 +75,6 @@ void infiniverse::updatepersis(uint64_t persistent_id, uint64_t land_id,
     vector3 position, vector3 orientation, vector3 scale)
 {
     persistent_table persistents(_self, _self.value);
-    auto persistents_itr = persistents.find(persistent_id);
     uint64_t old_land_id = get_land_id_from_persistent(persistents, persistent_id);
     require_land_owner_auth(old_land_id);
     if(land_id != old_land_id)
@@ -112,6 +82,8 @@ void infiniverse::updatepersis(uint64_t persistent_id, uint64_t land_id,
         require_land_owner_auth(land_id);
     }
     assert_vectors_within_bounds(position, orientation, scale);
+    
+    auto persistents_itr = persistents.find(persistent_id);
     persistents.modify(persistents_itr, same_payer, [&](auto &row) {
         row.land_id = land_id;
         row.position = position;
@@ -123,9 +95,10 @@ void infiniverse::updatepersis(uint64_t persistent_id, uint64_t land_id,
 void infiniverse::deletepersis(uint64_t persistent_id)
 {
     persistent_table persistents(_self, _self.value);
-    auto persistents_itr = persistents.find(persistent_id);
     uint64_t land_id = get_land_id_from_persistent(persistents, persistent_id);
     name user = require_land_owner_auth(land_id);
+
+    auto persistents_itr = persistents.find(persistent_id);
     uint128_t source_and_asset_id = persistents_itr->source_and_asset_id;
     persistents.erase(persistents_itr);
 
@@ -167,15 +140,14 @@ void infiniverse::closedeposit(name owner)
 {
     require_auth(owner);
     deposit_table deposits(_self, _self.value);
-    auto deposits_itr = deposits.find(owner.value);
-    eosio_assert(deposits_itr != deposits.end(), "User does not have a deposit opened");
+    deposit d = deposits.get(owner.value, "User does not have a deposit opened");
 
-    if(deposits_itr->balance.amount > 0)
+    if(d.balance.amount > 0)
     {
-        transfer_inf(_self, owner, deposits_itr->balance, "");
+        transfer_inf(_self, owner, d.balance, "");
     }
 
-    deposits.erase(deposits_itr);
+    deposits.erase(deposits.find(owner.value));
 }
 
 void infiniverse::depositinf(name from, name to, asset quantity, std::string memo)
@@ -197,22 +169,265 @@ void infiniverse::depositinf(name from, name to, asset quantity, std::string mem
     });
 }
 
+void infiniverse::startauction()
+{
+    require_auth(_self);
+    auction_table auctions(_self, _self.value);
+    auto auctions_itr = auctions.find(0);
+    eosio_assert(auctions_itr == auctions.end(), "The land auction has already started");
+
+    auctions.emplace(_self, [&](auto &row) {
+        row.id = 0;
+        row.start_date = time_point_sec(now());
+    });
+}
+
+void infiniverse::makelandbid(name owner, double lat_north_edge, double long_east_edge,
+    double lat_south_edge, double long_west_edge, uint32_t inf_per_sqm)
+{
+    require_auth(owner);
+    auction_table auctions(_self, _self.value);
+    auction land_auction = auctions.get(0, "The land auction has not started");
+    time_point_sec start_date = land_auction.start_date;
+    time_point_sec end_date = start_date + seconds_in_one_week;
+    time_point_sec current_date = time_point_sec(now());
+
+    eosio_assert(inf_per_sqm >= reg_inf_per_sqm,
+        ("INF per square meter must be at least " + std::to_string(reg_inf_per_sqm)).c_str());
+
+    std::pair<double, double> land_size = assert_lat_long_values(lat_north_edge, long_east_edge,
+        lat_south_edge, long_west_edge);
+
+    landbid_table landbids(_self, _self.value);
+    auto lat_north_index = landbids.get_index<"bylatnorth"_n>();
+    auto landbids_itr = lat_north_index.lower_bound(lat_south_edge);
+    // Add max_land_length meters to lat_north_edge to get upper bound
+    double upper_bound = lat_north_edge + meters_to_lat_dist(max_land_length);
+    bool covers_recent_existing_bid = false;
+
+    while(landbids_itr != lat_north_index.end() && landbids_itr->lat_north_edge < upper_bound)
+    {
+        landbid bid = *landbids_itr;
+        // If an intersecing land is completely inside (covered by) the new bid, it must be outbid
+        // Unless the existing bid is by the same user
+        if(bid.lat_north_edge <= lat_north_edge &&
+            bid.lat_south_edge >= lat_south_edge &&
+            bid.long_east_edge <= long_east_edge &&
+            bid.long_west_edge >= long_west_edge)
+        {
+            eosio_assert(inf_per_sqm > bid.inf_per_sqm || owner == bid.owner,
+            "INF per square meter is less than or equal to covered land bids");
+            
+            cancel_deferred(bid.id);
+
+            std::pair<double, double> covered_bid_land_size = lat_long_to_meters(
+                bid.lat_north_edge, bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
+
+            asset inf_amount = calculate_land_reg_fee(covered_bid_land_size, bid.inf_per_sqm);
+            // Refund INF to covered bid
+            transfer_inf(_self, bid.owner, inf_amount, "");
+
+            if(current_date < bid.bid_date + seconds_in_one_day)
+            {
+                covers_recent_existing_bid = true;
+            }
+
+            // Erase the covered bid as it has been outbid
+            landbids_itr = lat_north_index.erase(landbids_itr);
+        }
+        // Otherwise, any other kind of intersection is not allowed
+        else
+        {
+            eosio_assert(
+                bid.long_east_edge <= long_west_edge ||
+                bid.long_west_edge >= long_east_edge ||
+                bid.lat_south_edge >= lat_north_edge ||
+                // Required because lower bound includes equality case
+                bid.lat_north_edge <= lat_south_edge,
+                "Bid intersects with existing bids, without completely covering them");
+            landbids_itr++;
+        }
+    }
+
+    // If the auction has ended, it is still possible to make bids that cover existing bids
+    // Lands are awarded after they have not been outbid for 24 hours
+    if(current_date >= end_date)
+    {
+        eosio_assert(covers_recent_existing_bid,
+        "As the land auction has ended, new bids must cover existing bids made less than 24 hours ago");
+
+        // As the land auction has ended we must also check if there are any intersections in the land table
+        land_table lands(_self, _self.value);
+
+        check_land_intersections(lands, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
+    }
+
+    asset inf_amount = calculate_land_reg_fee(land_size, inf_per_sqm);
+    deduct_inf_deposit(owner, inf_amount);
+
+    uint64_t bid_id = landbids.available_primary_key();
+    landbids.emplace(owner, [&](auto &row) {
+        row.id = bid_id;
+        row.owner = owner;
+        row.lat_north_edge = lat_north_edge;
+        row.long_east_edge = long_east_edge;
+        row.lat_south_edge = lat_south_edge;
+        row.long_west_edge = long_west_edge;
+        row.bid_date = time_point_sec(now());
+        row.inf_per_sqm = inf_per_sqm;
+    });
+
+    transaction t;
+    t.actions.emplace_back(permission_level{owner, "active"_n},
+        _self, "awardlandbid"_n,
+        std::make_tuple(bid_id)
+    );
+    
+    if(current_date >= end_date)
+    {
+        t.delay_sec = seconds_in_one_day;
+    }
+    else
+    {
+        t.delay_sec = std::max(seconds_in_one_day, end_date.utc_seconds - current_date.utc_seconds);
+    }
+
+    t.send(bid_id, owner);
+}
+
+void infiniverse::awardlandbid(uint64_t bid_id)
+{
+    landbid_table landbids(_self, _self.value);
+    landbid bid = landbids.get(bid_id, "Bid Id does not exist");
+    require_auth(bid.owner);
+    
+    auction_table auctions(_self, _self.value);
+    auction land_auction = auctions.get(0);
+    time_point_sec start_date = land_auction.start_date;
+    time_point_sec end_date = start_date + seconds_in_one_week;
+    time_point_sec current_date = time_point_sec(now());
+    time_point_sec bid_award_date = std::max(end_date, bid.bid_date+seconds_in_one_day);
+
+    eosio_assert(current_date >= bid_award_date, "Land bid cannot be awarded yet");
+
+    std::pair<double, double> land_size = lat_long_to_meters(bid.lat_north_edge,
+    bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
+
+    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm);
+    // The bid price gets sent back to the token issuing account
+    transfer_inf(_self, inf_account, inf_amount, "");
+
+    land_table lands(_self, _self.value);
+
+    lands.emplace(bid.owner, [&](auto &row) {
+        row.id = lands.available_primary_key();
+        row.owner = bid.owner;
+        row.lat_north_edge = bid.lat_north_edge;
+        row.long_east_edge = bid.long_east_edge;
+        row.lat_south_edge = bid.lat_south_edge;
+        row.long_west_edge = bid.long_west_edge;
+        row.reg_end_date = time_point_sec(now() + seconds_in_one_year);
+    });
+    landbids.erase(landbids.find(bid_id));
+}
+
+
+std::pair<double, double> infiniverse::assert_lat_long_values(const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge)
+{ eosio_assert(lat_north_edge > lat_south_edge, "North edge must have greater latitude than south edge");
+    // Temporary restriction of registering land across the antimeridian to simplify land intersection algorithm
+    eosio_assert(long_east_edge > long_west_edge, "East edge must have greater longitude than west edge");
+    // Temporary longitude limit to between -85 and 85 degrees to simplify display of lands on a mapping UI
+    eosio_assert(lat_north_edge < 85, "Latitude cannot be greater than 85 degrees");
+    eosio_assert(lat_south_edge > -85, "Latitude cannot be less than -85 degrees");
+    eosio_assert(long_east_edge <= 180 && long_east_edge > -180 && long_west_edge <= 180
+        && long_west_edge > -180, "Longitude must be between -180 and 180 degrees");
+
+    std::pair<double, double> land_size = lat_long_to_meters(lat_north_edge,
+    long_east_edge, lat_south_edge, long_west_edge);
+
+    eosio_assert(land_size.first <= max_land_length && land_size.second <= max_land_length,
+        ("Land cannot exceed a length of " + std::to_string(max_land_length) + " meters on either side").c_str());
+
+    return land_size;
+}
+
+void infiniverse::check_land_intersections(const land_table& lands, const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge)
+{
+    auto lat_north_index = lands.get_index<"bylatnorth"_n>();
+    auto lands_itr = lat_north_index.lower_bound(lat_south_edge);
+    // Add max_land_length meters to lat_north_edge to get upper bound
+    double upper_bound = lat_north_edge + meters_to_lat_dist(max_land_length);
+
+    while(lands_itr != lat_north_index.end() && lands_itr->lat_north_edge < upper_bound)
+    {
+        eosio_assert(
+            lands_itr->long_east_edge <= long_west_edge ||
+            lands_itr->long_west_edge >= long_east_edge ||
+            lands_itr->lat_south_edge >= lat_north_edge ||
+            // Required because lower bound includes equality case
+            lands_itr->lat_north_edge <= lat_south_edge,
+            "Intersecting land has already been registered");
+        lands_itr++;
+    }
+}
+
+void infiniverse::check_landbid_intersections(const landbid_table& landbids, const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge)
+{
+    auto lat_north_index = landbids.get_index<"bylatnorth"_n>();
+    auto landbidss_itr = lat_north_index.lower_bound(lat_south_edge);
+    // Add max_land_length meters to lat_north_edge to get upper bound
+    double upper_bound = lat_north_edge + meters_to_lat_dist(max_land_length);
+
+    while(landbidss_itr != lat_north_index.end() && landbidss_itr->lat_north_edge < upper_bound)
+    {
+        eosio_assert(
+            landbidss_itr->long_east_edge <= long_west_edge ||
+            landbidss_itr->long_west_edge >= long_east_edge ||
+            landbidss_itr->lat_south_edge >= lat_north_edge ||
+            // Required because lower bound includes equality case
+            landbidss_itr->lat_north_edge <= lat_south_edge,
+            "You cannot register land that intersects with a landbid");
+        landbidss_itr++;
+    }
+}
+
+asset infiniverse::calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm)
+{
+    // Calculate registration fee assuming each side is at least 1 meter to avoid abuse
+    // Otherwise a malicious user could register a very thin, long and cheap land
+    // This land would be useless but would stop anyone else from registering land over it
+    double land_area = std::max(land_size.first, 1.0) * std::max(land_size.second, 1.0);
+    int64_t bid_price = static_cast<int64_t>(round(land_area * inf_per_sqm));
+    // multiply fee by 10000 to account for four decimal places of INF
+    return asset(bid_price * 10000, inf_symbol);
+}
+
+void infiniverse::deduct_inf_deposit(const name& owner, const asset& inf_amount)
+{
+    deposit_table deposits(_self, _self.value);
+    deposit d = deposits.get(owner.value, "User does not have a deposit opened");
+    eosio_assert(d.balance >= inf_amount, "User's INF deposit balance is too low");
+
+    deposits.modify(deposits.find(owner.value), same_payer, [&](auto &row){
+        row.balance -= inf_amount;
+    });
+}
 
 uint64_t infiniverse::get_land_id_from_persistent(const persistent_table& persistents, const uint64_t& persistent_id)
 {
-    auto persistents_itr = persistents.find(persistent_id);
-    eosio_assert(persistents_itr != persistents.end(), "Persistent Id does not exist");
-    uint64_t land_id = persistents_itr->land_id;
-    return land_id;
+    persistent p = persistents.get(persistent_id, "Persistent Id does not exist");
+    return p.land_id;
 }
 
 name infiniverse::require_land_owner_auth(const uint64_t& land_id)
 {
     land_table lands(_self, _self.value);
-    auto lands_itr = lands.find(land_id);
-    eosio_assert(lands_itr != lands.end(), "Land Id does not exist");
-    require_auth(lands_itr->owner);
-    return lands_itr->owner;
+    land l = lands.get(land_id, "Land Id does not exist");
+    require_auth(l.owner);
+    return l.owner;
 }
 
 void infiniverse::assert_vectors_within_bounds(const vector3& position,
@@ -230,7 +445,7 @@ void infiniverse::assert_vectors_within_bounds(const vector3& position,
         "Asset scale must be at least 0.2");
 }
 
-uint64_t infiniverse::add_poly(name user, std::string poly_id)
+uint64_t infiniverse::add_poly(const name& user, const std::string& poly_id)
 {
     require_auth(user);
 
@@ -275,7 +490,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(startauction)(makelandbid)(awardlandbid) )
             }
         }
         else if(code==inf_account.value && action=="transfer"_n.value) {

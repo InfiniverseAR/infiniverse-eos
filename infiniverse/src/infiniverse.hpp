@@ -33,6 +33,13 @@ CONTRACT infiniverse : public contract
 
     ACTION depositinf(name from, name to, asset quantity, std::string memo);
 
+    ACTION startauction();
+
+    ACTION makelandbid(name owner, double lat_north_edge, double long_east_edge,
+        double lat_south_edge, double long_west_edge, uint32_t inf_per_sqm);
+
+    ACTION awardlandbid(uint64_t bid_id);
+
     private:
 
     enum class PlacementSource : uint64_t
@@ -53,7 +60,7 @@ CONTRACT infiniverse : public contract
         time_point_sec reg_end_date;
 
         uint64_t primary_key() const { return id; }
-        uint64_t get_name() const { return owner.value; }
+        uint64_t get_owner() const { return owner.value; }
         double get_lat_north_edge() const { return lat_north_edge; }
         double get_long_east_edge() const { return long_east_edge; }
         double get_lat_south_edge() const { return lat_south_edge; }
@@ -61,7 +68,7 @@ CONTRACT infiniverse : public contract
     };
 
     typedef multi_index<"land"_n, land,
-        indexed_by<"byowner"_n, const_mem_fun<land, uint64_t, &land::get_name>>,
+        indexed_by<"byowner"_n, const_mem_fun<land, uint64_t, &land::get_owner>>,
         indexed_by<"bylatnorth"_n, const_mem_fun<land, double, &land::get_lat_north_edge>>,
         indexed_by<"bylongeast"_n, const_mem_fun<land, double, &land::get_long_east_edge>>,
         indexed_by<"bylatsouth"_n, const_mem_fun<land, double, &land::get_lat_south_edge>>,
@@ -106,10 +113,59 @@ CONTRACT infiniverse : public contract
         uint64_t primary_key() const { return owner.value; }
     };
 
-    typedef eosio::multi_index<"deposit"_n, deposit> deposit_table;
+    typedef multi_index<"deposit"_n, deposit> deposit_table;
+    
+    TABLE auction {
+        uint64_t id;
+        time_point_sec start_date;
+
+        uint64_t primary_key() const { return id; }
+    };
+
+    typedef multi_index<"auction"_n, auction> auction_table;
+
+    TABLE landbid
+    {
+        uint64_t id;
+        name owner;
+        double lat_north_edge;
+        double long_east_edge;
+        double lat_south_edge;
+        double long_west_edge;
+        time_point_sec bid_date;
+        uint32_t inf_per_sqm;
+
+        uint64_t primary_key() const { return id; }
+        uint64_t get_owner() const { return owner.value; }
+        double get_lat_north_edge() const { return lat_north_edge; }
+        double get_long_east_edge() const { return long_east_edge; }
+        double get_lat_south_edge() const { return lat_south_edge; }
+        double get_long_west_edge() const { return long_west_edge; }
+    };
+    
+    typedef multi_index<"landbid"_n, landbid,
+        indexed_by<"byowner"_n, const_mem_fun<landbid, uint64_t, &landbid::get_owner>>,
+        indexed_by<"bylatnorth"_n, const_mem_fun<landbid, double, &landbid::get_lat_north_edge>>,
+        indexed_by<"bylongeast"_n, const_mem_fun<landbid, double, &landbid::get_long_east_edge>>,
+        indexed_by<"bylatsouth"_n, const_mem_fun<landbid, double, &landbid::get_lat_south_edge>>,
+        indexed_by<"bylongwest"_n, const_mem_fun<landbid, double, &landbid::get_long_west_edge>>>
+        landbid_table;
     
 
-    uint64_t add_poly(name user, std::string poly_id);
+    std::pair<double, double> assert_lat_long_values(const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
+
+    void check_land_intersections(const land_table& lands, const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
+
+    void check_landbid_intersections(const landbid_table& landbids, const double& lat_north_edge,
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
+
+    asset calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm);
+    
+    void deduct_inf_deposit(const name& owner, const asset& inf_amount);
+    
+    uint64_t add_poly(const name& user, const std::string& poly_id);
 
     uint64_t get_land_id_from_persistent(const persistent_table& persistents, const uint64_t& persistent_id);
 

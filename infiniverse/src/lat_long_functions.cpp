@@ -4,8 +4,8 @@
 const double meters_per_degree_latitude = 111133;
 const double meters_per_degree_longitude_equator = 111320;
 
-std::pair<double, double> lat_long_to_meters(const double& lat1, const double& lat2,
-    const double& long1, const double& long2)
+std::pair<double, double> lat_long_to_meters(const double& lat1,
+    const double& long1, const double& lat2, const double& long2)
 {
     double average_lat_radians = (lat1 + lat2)/2 * M_PI / 180;
     double lat_difference = abs(lat1 - lat2);
