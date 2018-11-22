@@ -212,7 +212,8 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
             bid.long_east_edge <= long_east_edge &&
             bid.long_west_edge >= long_west_edge)
         {
-            eosio_assert(inf_per_sqm > bid.inf_per_sqm || owner == bid.owner,
+            eosio_assert(inf_per_sqm > bid.inf_per_sqm ||
+            (owner == bid.owner && inf_per_sqm == bid.inf_per_sqm),
             "INF per square meter is less than or equal to covered land bids");
             
             cancel_deferred(bid.id);
