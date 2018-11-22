@@ -78,14 +78,16 @@ CONTRACT infiniverse : public contract
     TABLE persistent {
         uint64_t id;
         uint64_t land_id;
-        uint128_t source_and_asset_id;
+        uint64_t source;
+        uint64_t asset_id;
         vector3 position;
         vector3 orientation;
         vector3 scale;
 
         uint64_t primary_key() const { return id; }
         uint64_t get_land_id() const { return land_id; }
-        uint128_t get_source_and_asset_id() const { return source_and_asset_id; }
+        // Pack the source and asset id into one int to store the composite index
+        uint128_t get_source_and_asset_id() const { return (uint128_t) source << 64 | asset_id; }
     };
 
     typedef multi_index<"persistent"_n, persistent,

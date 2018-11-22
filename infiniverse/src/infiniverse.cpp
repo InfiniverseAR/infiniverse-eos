@@ -5,10 +5,10 @@
 const uint32_t seconds_in_one_day = 60 * 60 * 24;
 const uint32_t seconds_in_one_week = seconds_in_one_day * 7;
 const uint32_t seconds_in_one_year = seconds_in_one_day * 365;
-const uint32_t max_land_length = 100;
+const uint32_t max_land_length = 1000;
 const symbol inf_symbol = symbol("INF", 4);
 const name inf_account = "infinicoinio"_n;
-const uint32_t reg_inf_per_sqm = 10;
+const uint32_t reg_inf_per_sqm = 1;
 
 void infiniverse::registerland(name owner, double lat_north_edge,
     double long_east_edge, double lat_south_edge, double long_west_edge)
@@ -57,14 +57,12 @@ void infiniverse::persistpoly(uint64_t land_id, std::string poly_id,
     uint64_t source = static_cast<uint64_t>(PlacementSource::POLY);
     uint64_t asset_id = add_poly(user, poly_id);
 
-    // Pack the source and asset id into one int to store the composite index
-    uint128_t source_and_asset_id = (uint128_t) source << 64 | asset_id;
-
     persistent_table persistents(_self, _self.value);
     persistents.emplace(user, [&](auto &row) {
         row.id = persistents.available_primary_key();
         row.land_id = land_id;
-        row.source_and_asset_id = source_and_asset_id;
+        row.source = source;
+        row.asset_id = asset_id;
         row.position = position;
         row.orientation = orientation;
         row.scale = scale;
@@ -98,12 +96,12 @@ void infiniverse::deletepersis(uint64_t persistent_id)
     uint64_t land_id = get_land_id_from_persistent(persistents, persistent_id);
     name user = require_land_owner_auth(land_id);
 
-    auto persistents_itr = persistents.find(persistent_id);
-    uint128_t source_and_asset_id = persistents_itr->source_and_asset_id;
-    persistents.erase(persistents_itr);
+    persistent p = persistents.get(persistent_id);
+    uint64_t source = p.source;
+    uint64_t asset_id = p.asset_id;
+    uint128_t source_and_asset_id = p.get_source_and_asset_id();
+    persistents.erase(persistents.find(persistent_id));
 
-    // Get the source by unpacking the most significant bits from the composite index
-    uint64_t source = (uint64_t)(source_and_asset_id >> 64);
     // If this is a poly asset, we can delete it if the user has not placed it elsewhere
     if(static_cast<PlacementSource>(source) == PlacementSource::POLY)
     {
@@ -114,8 +112,7 @@ void infiniverse::deletepersis(uint64_t persistent_id)
         if(itr == asset_id_index.end())
         {
             poly_table poly(_self, _self.value);
-            // Get the asset_id by unpacking the least significant bits from the composite index
-            auto poly_itr = poly.find((uint64_t)source_and_asset_id);
+            auto poly_itr = poly.find(asset_id);
             poly.erase(poly_itr);
         }
     }
