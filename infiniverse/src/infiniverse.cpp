@@ -35,7 +35,7 @@ void infiniverse::registerland(name owner, double lat_north_edge,
     deduct_inf_deposit(owner, inf_amount);
 
     // The registration fee gets sent back to the token issuing account
-    transfer_inf(_self, inf_account, inf_amount, "");
+    transfer_inf(_self, inf_account, inf_amount, "Land registration fee");
 
     lands.emplace(owner, [&](auto &row) {
         row.id = lands.available_primary_key();
@@ -135,13 +135,13 @@ void infiniverse::opendeposit(name owner)
 
 void infiniverse::closedeposit(name owner)
 {
-    require_auth(owner);
+    eosio_assert(has_auth(owner) || has_auth(_self), "You do not have authority to close this deposit");
     deposit_table deposits(_self, _self.value);
     deposit d = deposits.get(owner.value, "User does not have a deposit opened");
 
     if(d.balance.amount > 0)
     {
-        transfer_inf(_self, owner, d.balance, "");
+        transfer_inf(_self, owner, d.balance, "INF deposit refund");
     }
 
     deposits.erase(deposits.find(owner.value));
@@ -223,7 +223,7 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
 
             asset inf_amount = calculate_land_reg_fee(covered_bid_land_size, bid.inf_per_sqm);
             // Refund INF to covered bid
-            transfer_inf(_self, bid.owner, inf_amount, "");
+            transfer_inf(_self, bid.owner, inf_amount, "Your land has been outbid");
 
             if(current_date < bid.bid_date + seconds_in_one_day)
             {
@@ -313,7 +313,7 @@ void infiniverse::awardlandbid(uint64_t bid_id)
 
     asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm);
     // The bid price gets sent back to the token issuing account
-    transfer_inf(_self, inf_account, inf_amount, "");
+    transfer_inf(_self, inf_account, inf_amount, "Awarded land auction cost");
 
     land_table lands(_self, _self.value);
 
