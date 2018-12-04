@@ -65,16 +65,12 @@ CONTRACT infiniverse : public contract
         uint64_t get_owner() const { return owner.value; }
         double get_lat_north_edge() const { return lat_north_edge; }
         double get_long_east_edge() const { return long_east_edge; }
-        double get_lat_south_edge() const { return lat_south_edge; }
-        double get_long_west_edge() const { return long_west_edge; }
     };
 
     typedef multi_index<"land"_n, land,
         indexed_by<"byowner"_n, const_mem_fun<land, uint64_t, &land::get_owner>>,
         indexed_by<"bylatnorth"_n, const_mem_fun<land, double, &land::get_lat_north_edge>>,
-        indexed_by<"bylongeast"_n, const_mem_fun<land, double, &land::get_long_east_edge>>,
-        indexed_by<"bylatsouth"_n, const_mem_fun<land, double, &land::get_lat_south_edge>>,
-        indexed_by<"bylongwest"_n, const_mem_fun<land, double, &land::get_long_west_edge>>>
+        indexed_by<"bylongeast"_n, const_mem_fun<land, double, &land::get_long_east_edge>>>
         land_table;
     
     TABLE persistent {
