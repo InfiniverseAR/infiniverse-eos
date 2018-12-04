@@ -38,6 +38,8 @@ CONTRACT infiniverse : public contract
     ACTION makelandbid(name owner, double lat_north_edge, double long_east_edge,
         double lat_south_edge, double long_west_edge, uint32_t inf_per_sqm);
 
+    ACTION cancelbid(uint64_t bid_id);
+
     ACTION awardlandbid(uint64_t bid_id);
 
     private:

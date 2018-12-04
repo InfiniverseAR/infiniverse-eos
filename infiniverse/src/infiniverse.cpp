@@ -293,6 +293,26 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
     t.send(bid_id, owner);
 }
 
+void infiniverse::cancelbid(uint64_t bid_id)
+{
+    landbid_table landbids(_self, _self.value);
+    landbid bid = landbids.get(bid_id, "Bid Id does not exist");
+    require_auth(bid.owner);
+    eosio_assert(bid.inf_per_sqm == 1, "You can only cancel 1 INF per square meter bids");
+
+    cancel_deferred(bid.id);
+
+    std::pair<double, double> land_size = lat_long_to_meters(
+        bid.lat_north_edge, bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
+
+    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm);
+    // Refund INF to cancelled bid
+    transfer_inf(_self, bid.owner, inf_amount, "You cancelled your bid");
+
+    // Erase the bid as it has been cancelled
+    landbids.erase(landbids.find(bid_id));
+}
+
 void infiniverse::awardlandbid(uint64_t bid_id)
 {
     landbid_table landbids(_self, _self.value);
@@ -488,7 +508,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(startauction)(makelandbid)(awardlandbid) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(startauction)(makelandbid)(cancelbid)(awardlandbid) )
             }
         }
         else if(code==inf_account.value && action=="transfer"_n.value) {
