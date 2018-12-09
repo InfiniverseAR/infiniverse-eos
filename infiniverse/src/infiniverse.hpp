@@ -33,12 +33,12 @@ CONTRACT infiniverse : public contract
 
     ACTION depositinf(name from, name to, asset quantity, std::string memo);
 
-    ACTION startauction();
+    //ACTION startauction();
 
     ACTION makelandbid(name owner, double lat_north_edge, double long_east_edge,
         double lat_south_edge, double long_west_edge, uint32_t inf_per_sqm);
 
-    ACTION cancelbid(uint64_t bid_id);
+    //ACTION cancelbid(uint64_t bid_id);
 
     ACTION awardlandbid(uint64_t bid_id);
 
@@ -161,7 +161,9 @@ CONTRACT infiniverse : public contract
     void check_landbid_intersections(const landbid_table& landbids, const double& lat_north_edge,
         const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
 
-    asset calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm);
+    asset calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm, const double& years);
+
+    asset calculate_land_reg_fee(const double& land_area, const uint32_t& inf_per_sqm, const double& years);
     
     void deduct_inf_deposit(const name& owner, const asset& inf_amount);
     

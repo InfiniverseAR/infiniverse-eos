@@ -15,23 +15,68 @@ void infiniverse::registerland(name owner, double lat_north_edge,
 {
     require_auth(owner);
 
-    auction_table auctions(_self, _self.value);
+    /*auction_table auctions(_self, _self.value);
     auction land_auction = auctions.get(0, "The land auction has not started");
     time_point_sec start_date = land_auction.start_date;
     time_point_sec end_date = start_date + seconds_in_one_week;
     time_point_sec current_date = time_point_sec(now());
-    eosio_assert(current_date >= end_date, "You cannot register land until the auction is complete");
+    eosio_assert(current_date >= end_date, "You cannot register land until the auction is complete");*/
 
     std::pair<double, double> land_size = assert_lat_long_values(lat_north_edge, long_east_edge,
         lat_south_edge, long_west_edge);
 
     land_table lands(_self, _self.value);
-    check_land_intersections(lands, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
+    auto lat_north_index = lands.get_index<"bylatnorth"_n>();
+    auto lands_itr = lat_north_index.lower_bound(lat_south_edge);
+    // Add max_land_length meters to lat_north_edge to get upper bound
+    double upper_bound = lat_north_edge + meters_to_lat_dist(max_land_length);
+
+    asset inf_amount = asset(0, inf_symbol);
+
+    while(lands_itr != lat_north_index.end() && lands_itr->lat_north_edge < upper_bound)
+    {
+        land l = *lands_itr;
+        // If an intersecing land is completely inside (covered by) the new land
+        // it must be owned by the same user
+        if(l.lat_north_edge <= lat_north_edge &&
+            l.lat_south_edge >= lat_south_edge &&
+            l.long_east_edge <= long_east_edge &&
+            l.long_west_edge >= long_west_edge)
+        {
+            eosio_assert(owner == l.owner, "Intersecting land has already been registered");
+
+            std::pair<double, double> covered_land_size = lat_long_to_meters(
+                l.lat_north_edge, l.long_east_edge, l.lat_south_edge, l.long_west_edge);
+            
+            double covered_land_area = covered_land_size.first * covered_land_size.second;
+            double reg_years_left = (l.reg_end_date.utc_seconds - now()) / (double)seconds_in_one_year;
+            inf_amount -= calculate_land_reg_fee(covered_land_area, reg_inf_per_sqm, reg_years_left);
+
+            // Erase the covered land as it has been replaced
+            lands_itr = lat_north_index.erase(lands_itr);
+        }
+        // Otherwise, any other kind of intersection is not allowed
+        else
+        {
+            eosio_assert(
+                l.long_east_edge <= long_west_edge ||
+                l.long_west_edge >= long_east_edge ||
+                l.lat_south_edge >= lat_north_edge ||
+                // Required because lower bound includes equality case
+                l.lat_north_edge <= lat_south_edge,
+                "Intersecting land has already been registered");
+            lands_itr++;
+        }
+    }
 
     landbid_table landbids(_self, _self.value);
     check_landbid_intersections(landbids, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
 
-    asset inf_amount = calculate_land_reg_fee(land_size, reg_inf_per_sqm);
+    inf_amount += calculate_land_reg_fee(land_size, reg_inf_per_sqm, 1);
+    if(inf_amount.amount < 1 * 10000)
+    {
+        inf_amount = asset(1 * 10000, inf_symbol);
+    }
     deduct_inf_deposit(owner, inf_amount);
 
     // The registration fee gets sent back to the token issuing account
@@ -166,7 +211,7 @@ void infiniverse::depositinf(name from, name to, asset quantity, std::string mem
     });
 }
 
-void infiniverse::startauction()
+/*void infiniverse::startauction()
 {
     require_auth(_self);
     auction_table auctions(_self, _self.value);
@@ -177,7 +222,7 @@ void infiniverse::startauction()
         row.id = 0;
         row.start_date = time_point_sec(now());
     });
-}
+}*/
 
 void infiniverse::makelandbid(name owner, double lat_north_edge, double long_east_edge,
     double lat_south_edge, double long_west_edge, uint32_t inf_per_sqm)
@@ -221,7 +266,7 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
             std::pair<double, double> covered_bid_land_size = lat_long_to_meters(
                 bid.lat_north_edge, bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
 
-            asset inf_amount = calculate_land_reg_fee(covered_bid_land_size, bid.inf_per_sqm);
+            asset inf_amount = calculate_land_reg_fee(covered_bid_land_size, bid.inf_per_sqm, 1);
             // Refund INF to covered bid
             transfer_inf(_self, bid.owner, inf_amount, "Your land has been outbid");
 
@@ -260,7 +305,7 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
         check_land_intersections(lands, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge);
     }
 
-    asset inf_amount = calculate_land_reg_fee(land_size, inf_per_sqm);
+    asset inf_amount = calculate_land_reg_fee(land_size, inf_per_sqm, 1);
     deduct_inf_deposit(owner, inf_amount);
 
     uint64_t bid_id = landbids.available_primary_key();
@@ -293,7 +338,7 @@ void infiniverse::makelandbid(name owner, double lat_north_edge, double long_eas
     t.send(bid_id, owner);
 }
 
-void infiniverse::cancelbid(uint64_t bid_id)
+/*void infiniverse::cancelbid(uint64_t bid_id)
 {
     landbid_table landbids(_self, _self.value);
     landbid bid = landbids.get(bid_id, "Bid Id does not exist");
@@ -305,13 +350,13 @@ void infiniverse::cancelbid(uint64_t bid_id)
     std::pair<double, double> land_size = lat_long_to_meters(
         bid.lat_north_edge, bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
 
-    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm);
+    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm, 1);
     // Refund INF to cancelled bid
     transfer_inf(_self, bid.owner, inf_amount, "You cancelled your bid");
 
     // Erase the bid as it has been cancelled
     landbids.erase(landbids.find(bid_id));
-}
+}*/
 
 void infiniverse::awardlandbid(uint64_t bid_id)
 {
@@ -331,7 +376,7 @@ void infiniverse::awardlandbid(uint64_t bid_id)
     std::pair<double, double> land_size = lat_long_to_meters(bid.lat_north_edge,
     bid.long_east_edge, bid.lat_south_edge, bid.long_west_edge);
 
-    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm);
+    asset inf_amount = calculate_land_reg_fee(land_size, bid.inf_per_sqm, 1);
     // The bid price gets sent back to the token issuing account
     transfer_inf(_self, inf_account, inf_amount, "Awarded land auction cost");
 
@@ -412,15 +457,20 @@ void infiniverse::check_landbid_intersections(const landbid_table& landbids, con
     }
 }
 
-asset infiniverse::calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm)
+asset infiniverse::calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm, const double& years)
 {
     // Calculate registration fee assuming each side is at least 1 meter to avoid abuse
     // Otherwise a malicious user could register a very thin, long and cheap land
     // This land would be useless but would stop anyone else from registering land over it
     double land_area = std::max(land_size.first, 1.0) * std::max(land_size.second, 1.0);
-    int64_t bid_price = static_cast<int64_t>(round(land_area * inf_per_sqm));
+    return calculate_land_reg_fee(land_area, inf_per_sqm, years);
+}
+
+asset infiniverse::calculate_land_reg_fee(const double& land_area, const uint32_t& inf_per_sqm, const double& years)
+{
+    int64_t reg_price = static_cast<int64_t>(round(land_area * inf_per_sqm * years));
     // multiply fee by 10000 to account for four decimal places of INF
-    return asset(bid_price * 10000, inf_symbol);
+    return asset(reg_price * 10000, inf_symbol);
 }
 
 void infiniverse::deduct_inf_deposit(const name& owner, const asset& inf_amount)
@@ -508,7 +558,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(startauction)(makelandbid)(cancelbid)(awardlandbid) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(makelandbid)(awardlandbid) )
             }
         }
         else if(code==inf_account.value && action=="transfer"_n.value) {
