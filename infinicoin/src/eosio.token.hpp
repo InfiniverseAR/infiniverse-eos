@@ -41,6 +41,9 @@ namespace eosio {
          void open( name owner, const symbol& symbol, name ram_payer );
 
          [[eosio::action]]
+         void claim( name owner, const symbol& symbol );
+
+         [[eosio::action]]
          void close( name owner, const symbol& symbol );
 
          static asset get_supply( name token_contract_account, symbol_code sym_code )

@@ -155,6 +155,26 @@ void token::open( name owner, const symbol& symbol, name ram_payer )
    }
 }
 
+void token::claim( name owner, const symbol& symbol )
+{
+   require_auth( owner );
+
+   auto sym_code_raw = symbol.code().raw();
+
+   stats statstable( _self, sym_code_raw );
+   const auto& st = statstable.get( sym_code_raw, "symbol does not exist" );
+   eosio_assert( st.supply.symbol == symbol, "symbol precision mismatch" );
+
+   accounts acnts( _self, owner.value );
+   auto it = acnts.find( sym_code_raw );
+   eosio_assert(it != acnts.end(), "You can only claim a token you have already received");
+
+   // empty modify to change the ram payer
+   acnts.modify( it, owner, [&]( auto& a ){
+   });
+
+}
+
 void token::close( name owner, const symbol& symbol )
 {
    require_auth( owner );
@@ -167,4 +187,4 @@ void token::close( name owner, const symbol& symbol )
 
 } /// namespace eosio
 
-EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(open)(close)(retire) )
+EOSIO_DISPATCH( eosio::token, (create)(issue)(transfer)(open)(close)(retire)(claim) )
