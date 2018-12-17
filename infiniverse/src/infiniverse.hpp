@@ -106,42 +106,6 @@ CONTRACT infiniverse : public contract
 
     typedef multi_index<"deposit"_n, deposit> deposit_table;
     
-    TABLE auction {
-        uint64_t id;
-        time_point_sec start_date;
-
-        uint64_t primary_key() const { return id; }
-    };
-
-    typedef multi_index<"auction"_n, auction> auction_table;
-
-    TABLE landbid
-    {
-        uint64_t id;
-        name owner;
-        double lat_north_edge;
-        double long_east_edge;
-        double lat_south_edge;
-        double long_west_edge;
-        time_point_sec bid_date;
-        uint32_t inf_per_sqm;
-
-        uint64_t primary_key() const { return id; }
-        uint64_t get_owner() const { return owner.value; }
-        double get_lat_north_edge() const { return lat_north_edge; }
-        double get_long_east_edge() const { return long_east_edge; }
-        double get_lat_south_edge() const { return lat_south_edge; }
-        double get_long_west_edge() const { return long_west_edge; }
-    };
-    
-    typedef multi_index<"landbid"_n, landbid,
-        indexed_by<"byowner"_n, const_mem_fun<landbid, uint64_t, &landbid::get_owner>>,
-        indexed_by<"bylatnorth"_n, const_mem_fun<landbid, double, &landbid::get_lat_north_edge>>,
-        indexed_by<"bylongeast"_n, const_mem_fun<landbid, double, &landbid::get_long_east_edge>>,
-        indexed_by<"bylatsouth"_n, const_mem_fun<landbid, double, &landbid::get_lat_south_edge>>,
-        indexed_by<"bylongwest"_n, const_mem_fun<landbid, double, &landbid::get_long_west_edge>>>
-        landbid_table;
-    
 
     std::pair<double, double> assert_lat_long_values(const double& lat_north_edge,
         const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
