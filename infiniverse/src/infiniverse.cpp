@@ -50,7 +50,7 @@ void infiniverse::registerland(name owner, double lat_north_edge,
             auto land_id_index = persistents.get_index<"bylandid"_n>();
             auto persistents_itr = land_id_index.lower_bound(l.id);
 
-            while(persistents_itr->land_id == l.id) {
+            while(persistents_itr != land_id_index.end() && persistents_itr->land_id == l.id) {
                 persistents_itr = land_id_index.erase(persistents_itr);
             }
 
@@ -223,7 +223,7 @@ void infiniverse::closedeposit(name owner)
 void infiniverse::depositinf(name from, name to, asset quantity, std::string memo)
 {
     // In case the tokens are from us, or not to us, do nothing
-    if(from == _self || to != _self)
+    if(from == _self || from == inf_account || to != _self)
         return;
     // This should never happen as we ensured transfer action belongs to "infinicoinio" account
     eosio_assert(quantity.symbol == inf_symbol, "The symbol does not match");
