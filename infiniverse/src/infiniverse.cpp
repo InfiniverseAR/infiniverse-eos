@@ -1,6 +1,5 @@
 #include "infiniverse.hpp"
 #include "lat_long_functions.cpp"
-#include <eosiolib/transaction.hpp>
 
 const uint32_t seconds_in_one_day = 60 * 60 * 24;
 const uint32_t seconds_in_one_week = seconds_in_one_day * 7;
@@ -80,6 +79,35 @@ void infiniverse::registerland(name owner, double lat_north_edge,
         row.lat_south_edge = lat_south_edge;
         row.long_west_edge = long_west_edge;
         row.reg_end_date = time_point_sec(now() + seconds_in_one_year);
+    });
+}
+
+void infiniverse::moveland(uint64_t land_id, double lat_north_edge,
+    double long_east_edge, double lat_south_edge, double long_west_edge)
+{
+    name owner = require_land_owner_auth(land_id);
+
+    land_table lands(_self, _self.value);
+    land moving_land = lands.get(land_id);
+
+    std::pair<double, double> old_land_size = lat_long_to_meters(moving_land.lat_north_edge,
+    moving_land.long_east_edge, moving_land.lat_south_edge, moving_land.long_west_edge);
+    asset old_land_fee = calculate_land_reg_fee(old_land_size, reg_inf_per_sqm, 1);
+
+    std::pair<double, double> new_land_size = assert_lat_long_values(lat_north_edge, long_east_edge,
+        lat_south_edge, long_west_edge);
+    asset new_land_fee = calculate_land_reg_fee(new_land_size, reg_inf_per_sqm, 1);
+
+    // Ensure the new land is approximately the same size
+    eosio_assert(old_land_fee == new_land_fee, "The land size has changed during the move");
+
+    check_land_intersections(lands, lat_north_edge, long_east_edge, lat_south_edge, long_west_edge, land_id);
+
+    lands.modify(lands.find(land_id), owner, [&](auto &row) {
+        row.lat_north_edge = lat_north_edge;
+        row.long_east_edge = long_east_edge;
+        row.lat_south_edge = lat_south_edge;
+        row.long_west_edge = long_west_edge;
     });
 }
 
@@ -222,7 +250,7 @@ std::pair<double, double> infiniverse::assert_lat_long_values(const double& lat_
 }
 
 void infiniverse::check_land_intersections(const land_table& lands, const double& lat_north_edge,
-        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge)
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge, const uint64_t& exclude_land_id)
 {
     auto lat_north_index = lands.get_index<"bylatnorth"_n>();
     auto lands_itr = lat_north_index.lower_bound(lat_south_edge);
@@ -236,7 +264,9 @@ void infiniverse::check_land_intersections(const land_table& lands, const double
             lands_itr->long_west_edge >= long_east_edge ||
             lands_itr->lat_south_edge >= lat_north_edge ||
             // Required because lower bound includes equality case
-            lands_itr->lat_north_edge <= lat_south_edge,
+            lands_itr->lat_north_edge <= lat_south_edge ||
+            // Land can intersect with itself when it's being moved
+            lands_itr->id == exclude_land_id,
             "Intersecting land has already been registered");
         lands_itr++;
     }
@@ -343,7 +373,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(moveland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit) )
             }
         }
         else if(code==inf_account.value && action=="transfer"_n.value) {

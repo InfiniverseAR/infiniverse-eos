@@ -19,6 +19,9 @@ CONTRACT infiniverse : public contract
     ACTION registerland(name owner, double lat_north_edge,
         double long_east_edge, double lat_south_edge, double long_west_edge);
 
+    ACTION moveland(uint64_t land_id, double lat_north_edge,
+        double long_east_edge, double lat_south_edge, double long_west_edge);
+
     ACTION persistpoly(uint64_t land_id, std::string poly_id,
         vector3 position, vector3 orientation, vector3 scale);
 
@@ -111,7 +114,7 @@ CONTRACT infiniverse : public contract
         const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
 
     void check_land_intersections(const land_table& lands, const double& lat_north_edge,
-        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge);
+        const double& long_east_edge, const double& lat_south_edge, const double& long_west_edge, const uint64_t& exclude_land_id);
 
     asset calculate_land_reg_fee(const std::pair<double, double>& land_size, const uint32_t& inf_per_sqm, const double& years);
 
