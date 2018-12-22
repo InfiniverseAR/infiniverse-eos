@@ -44,6 +44,15 @@ void infiniverse::registerland(name owner, double lat_north_edge,
             double reg_years_left = (l.reg_end_date.utc_seconds - now()) / (double)seconds_in_one_year;
             inf_amount -= calculate_land_reg_fee(covered_land_area, reg_inf_per_sqm, reg_years_left);
 
+            // Before we erase the land, delete any objects on it
+            persistent_table persistents(_self, _self.value);
+            auto land_id_index = persistents.get_index<"bylandid"_n>();
+            auto persistents_itr = land_id_index.lower_bound(l.id);
+
+            while(persistents_itr->land_id == l.id) {
+                persistents_itr = land_id_index.erase(persistents_itr);
+            }
+
             // Erase the covered land as it has been replaced
             lands_itr = lat_north_index.erase(lands_itr);
         }
