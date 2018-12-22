@@ -4,7 +4,8 @@
 const uint32_t seconds_in_one_day = 60 * 60 * 24;
 const uint32_t seconds_in_one_week = seconds_in_one_day * 7;
 const uint32_t seconds_in_one_year = seconds_in_one_day * 365;
-const uint32_t max_land_length = 1000;
+const float min_land_length = 0.1;
+const uint32_t max_land_length = 600;
 const symbol inf_symbol = symbol("INF", 4);
 const name inf_account = "infinicoinio"_n;
 const uint32_t reg_inf_per_sqm = 1;
@@ -254,6 +255,9 @@ std::pair<double, double> infiniverse::assert_lat_long_values(const double& lat_
 
     eosio_assert(land_size.first <= max_land_length && land_size.second <= max_land_length,
         ("Land cannot exceed a length of " + std::to_string(max_land_length) + " meters on either side").c_str());
+
+    eosio_assert(land_size.first >= min_land_length && land_size.second >= min_land_length,
+        ("Land must be at least a length of " + std::to_string(min_land_length) + " meters on both sides").c_str());
 
     return land_size;
 }
