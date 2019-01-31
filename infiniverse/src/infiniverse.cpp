@@ -97,6 +97,10 @@ void infiniverse::moveland(uint64_t land_id, double lat_north_edge,
 {
     name owner = require_land_owner_auth(land_id);
 
+    land_price_table landprices(_self, _self.value);
+    auto landprices_itr = landprices.find(land_id);
+    eosio_assert(landprices_itr == landprices.end(), "You cannot move a land that is up for sale");
+
     land_table lands(_self, _self.value);
     land moving_land = lands.get(land_id);
 
@@ -157,7 +161,7 @@ void infiniverse::cancelsale(uint64_t land_id)
     landprices.erase(landprices.find(land_id));
 }
 
-void infiniverse::buyland(name buyer, uint64_t land_id)
+void infiniverse::buyland(name buyer, uint64_t land_id, asset price)
 {
     require_auth(buyer);
 
@@ -169,6 +173,7 @@ void infiniverse::buyland(name buyer, uint64_t land_id)
 
     land_price_table landprices(_self, _self.value);
     landprice lp = landprices.get(land_id, "Given land is not for sale");
+    eosio_assert(price == lp.price, "Give price does not match for sale price");
     deduct_inf_deposit(buyer, lp.price);
     transfer_inf(_self, owner, lp.price, "Your land has been purchased!");
 

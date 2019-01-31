@@ -26,7 +26,7 @@ CONTRACT infiniverse : public contract
 
     ACTION cancelsale(uint64_t land_id);
 
-    ACTION buyland(name buyer, uint64_t land_id);
+    ACTION buyland(name buyer, uint64_t land_id, asset price);
 
     ACTION persistpoly(uint64_t land_id, std::string poly_id,
         vector3 position, vector3 orientation, vector3 scale);
