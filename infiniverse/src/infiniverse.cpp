@@ -168,12 +168,12 @@ void infiniverse::buyland(name buyer, uint64_t land_id, asset price)
     land_table lands(_self, _self.value);
     land l = lands.get(land_id, "Land Id does not exist");
     name owner = l.owner;
-
     eosio_assert(owner != buyer, "You cannot buy your own land");
+    require_recipient(owner);
 
     land_price_table landprices(_self, _self.value);
     landprice lp = landprices.get(land_id, "Given land is not for sale");
-    eosio_assert(price == lp.price, "Give price does not match for sale price");
+    eosio_assert(price == lp.price, "Given price does not match for sale price");
     deduct_inf_deposit(buyer, lp.price);
     transfer_inf(_self, owner, lp.price, "Your land has been purchased!");
 
