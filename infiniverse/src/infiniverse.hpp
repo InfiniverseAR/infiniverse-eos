@@ -22,6 +22,12 @@ CONTRACT infiniverse : public contract
     ACTION moveland(uint64_t land_id, double lat_north_edge,
         double long_east_edge, double lat_south_edge, double long_west_edge);
 
+    ACTION setlandprice(uint64_t land_id, asset price);
+
+    ACTION cancelsale(uint64_t land_id);
+
+    ACTION buyland(name buyer, uint64_t land_id);
+
     ACTION persistpoly(uint64_t land_id, std::string poly_id,
         vector3 position, vector3 orientation, vector3 scale);
 
@@ -66,6 +72,17 @@ CONTRACT infiniverse : public contract
         indexed_by<"bylatnorth"_n, const_mem_fun<land, double, &land::get_lat_north_edge>>,
         indexed_by<"bylongeast"_n, const_mem_fun<land, double, &land::get_long_east_edge>>>
         land_table;
+
+    TABLE landprice
+    {
+        uint64_t land_id;
+        asset price;
+
+        uint64_t primary_key() const { return land_id; }
+    };
+
+    typedef multi_index<"landprice"_n, landprice>
+        land_price_table;
     
     TABLE persistent {
         uint64_t id;

@@ -119,6 +119,71 @@ void infiniverse::moveland(uint64_t land_id, double lat_north_edge,
         row.lat_south_edge = lat_south_edge;
         row.long_west_edge = long_west_edge;
     });
+}   
+
+void infiniverse::setlandprice(uint64_t land_id, asset price)
+{
+    name owner = require_land_owner_auth(land_id);
+
+    eosio_assert(price.symbol == inf_symbol, "You must set a price in INF");
+    eosio_assert(price.is_valid(), "The quantity is not valid");
+    eosio_assert(price.amount > 0, "The amount must be positive");
+
+    land_price_table landprices(_self, _self.value);
+    auto landprices_itr = landprices.find(land_id);
+
+    if(landprices_itr == landprices.end()) {
+        landprices.emplace(owner, [&](auto &row) {
+            row.land_id = land_id;
+            row.price = price;
+        });
+    }
+    else
+    {
+        landprices.modify(landprices_itr, same_payer, [&](auto &row) {
+            row.price = price;
+        });
+
+    }
+}
+
+void infiniverse::cancelsale(uint64_t land_id)
+{
+    name owner = require_land_owner_auth(land_id);
+
+    land_price_table landprices(_self, _self.value);
+    landprice lp = landprices.get(land_id, "Given land is not for sale");
+
+    landprices.erase(landprices.find(land_id));
+}
+
+void infiniverse::buyland(name buyer, uint64_t land_id)
+{
+    require_auth(buyer);
+
+    land_table lands(_self, _self.value);
+    land l = lands.get(land_id, "Land Id does not exist");
+    name owner = l.owner;
+
+    eosio_assert(owner != buyer, "You cannot buy your own land");
+
+    land_price_table landprices(_self, _self.value);
+    landprice lp = landprices.get(land_id, "Given land is not for sale");
+    deduct_inf_deposit(buyer, lp.price);
+    transfer_inf(_self, owner, lp.price, "Your land has been purchased!");
+
+    landprices.erase(landprices.find(land_id));
+
+    lands.modify(lands.find(land_id), buyer, [&](auto &row) {
+        row.owner = buyer;
+    });
+
+    persistent_table persistents(_self, _self.value);
+    auto land_index = persistents.get_index<"bylandid"_n>();
+    auto persistents_itr = land_index.find(land_id);
+    while(persistents_itr != land_index.end()) {
+        persistents_itr = land_index.erase(persistents_itr);
+    }
 }
 
 void infiniverse::persistpoly(uint64_t land_id, std::string poly_id,
@@ -386,7 +451,7 @@ extern "C" {
         {
             switch(action)
             {
-                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(moveland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit) )
+                EOSIO_DISPATCH_HELPER( infiniverse, (registerland)(moveland)(persistpoly)(updatepersis)(deletepersis)(opendeposit)(closedeposit)(setlandprice)(cancelsale)(buyland) )
             }
         }
         else if(code==inf_account.value && action=="transfer"_n.value) {
