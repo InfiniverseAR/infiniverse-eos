@@ -54,6 +54,14 @@ void infiniverse::registerland(name owner, double lat_north_edge,
                 persistents_itr = land_id_index.erase(persistents_itr);
             }
 
+            // Before we erase the land, delete its price (if applicable)
+            land_price_table landprices(_self, _self.value);
+            auto landprices_itr = landprices.find(l.id);
+            if(landprices_itr != landprices.end())
+            {
+                landprices.erase(landprices_itr);
+            }
+
             // Erase the covered land as it has been replaced
             lands_itr = lat_north_index.erase(lands_itr);
         }
