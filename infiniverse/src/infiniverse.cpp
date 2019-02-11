@@ -194,7 +194,7 @@ void infiniverse::buyland(name buyer, uint64_t land_id, asset price)
     persistent_table persistents(_self, _self.value);
     auto land_index = persistents.get_index<"bylandid"_n>();
     auto persistents_itr = land_index.find(land_id);
-    while(persistents_itr != land_index.end()) {
+    while(persistents_itr != land_index.end() && persistents_itr->land_id == land_id) {
         persistents_itr = land_index.erase(persistents_itr);
     }
 }
