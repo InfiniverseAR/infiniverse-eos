@@ -46,13 +46,7 @@ void infiniverse::registerland(name owner, double lat_north_edge,
             inf_amount -= calculate_land_reg_fee(covered_land_area, reg_inf_per_sqm, reg_years_left);
 
             // Before we erase the land, delete any objects on it
-            persistent_table persistents(_self, _self.value);
-            auto land_id_index = persistents.get_index<"bylandid"_n>();
-            auto persistents_itr = land_id_index.lower_bound(l.id);
-
-            while(persistents_itr != land_id_index.end() && persistents_itr->land_id == l.id) {
-                persistents_itr = land_id_index.erase(persistents_itr);
-            }
+            delete_persistents_from_land(l.id);
 
             // Before we erase the land, delete its price (if applicable)
             land_price_table landprices(_self, _self.value);
@@ -191,12 +185,8 @@ void infiniverse::buyland(name buyer, uint64_t land_id, asset price)
         row.owner = buyer;
     });
 
-    persistent_table persistents(_self, _self.value);
-    auto land_index = persistents.get_index<"bylandid"_n>();
-    auto persistents_itr = land_index.find(land_id);
-    while(persistents_itr != land_index.end() && persistents_itr->land_id == land_id) {
-        persistents_itr = land_index.erase(persistents_itr);
-    }
+    // Since we are transfering the land, delete any objects on it
+    delete_persistents_from_land(land_id);
 }
 
 void infiniverse::persistpoly(uint64_t land_id, std::string poly_id,
@@ -253,21 +243,7 @@ void infiniverse::deletepersis(uint64_t persistent_id)
     uint128_t source_and_asset_id = p.get_source_and_asset_id();
     persistents.erase(persistents.find(persistent_id));
 
-    // If this is a poly asset, we can delete it if the user has not placed it elsewhere
-    if(static_cast<PlacementSource>(source) == PlacementSource::POLY)
-    {
-        auto asset_id_index = persistents.get_index<"byassetid"_n>();
-        // Asset id is unique per user even if it's the same poly id
-        // Otherwise it would not be clear who should pay for the RAM of a poly object
-        auto itr = asset_id_index.find(source_and_asset_id);
-        if(itr == asset_id_index.end())
-        {
-            poly_table poly(_self, _self.value);
-            auto poly_itr = poly.find(asset_id);
-            poly.erase(poly_itr);
-        }
-    }
-
+    delete_poly(persistents, source, asset_id, source_and_asset_id);
 }
 
 void infiniverse::opendeposit(name owner)
@@ -444,6 +420,41 @@ uint64_t infiniverse::add_poly(const name& user, const std::string& poly_id)
         row.poly_id = poly_id;
     });
     return new_id;
+}
+
+void infiniverse::delete_persistents_from_land(const uint64_t& land_id)
+{
+    persistent_table persistents(_self, _self.value);
+    auto land_index = persistents.get_index<"bylandid"_n>();
+    auto persistents_itr = land_index.find(land_id);
+    while(persistents_itr != land_index.end() && persistents_itr->land_id == land_id) {
+        uint64_t source = persistents_itr->source;
+        uint64_t asset_id = persistents_itr->asset_id;
+        uint128_t source_and_asset_id = persistents_itr->get_source_and_asset_id();
+
+        persistents_itr = land_index.erase(persistents_itr);
+
+        delete_poly(persistents, source, asset_id, source_and_asset_id);
+    }
+}
+
+void infiniverse::delete_poly(const persistent_table& persistents, const uint64_t& source,
+    const uint64_t& asset_id, const uint128_t& source_and_asset_id)
+{
+    // If this is a poly asset, we can delete it if the user has not placed it elsewhere
+    if(static_cast<PlacementSource>(source) == PlacementSource::POLY)
+    {
+        auto asset_id_index = persistents.get_index<"byassetid"_n>();
+        // Asset id is unique per user even if it's the same poly id
+        // Otherwise it would not be clear who should pay for the RAM of a poly object
+        auto itr = asset_id_index.find(source_and_asset_id);
+        if(itr == asset_id_index.end())
+        {
+            poly_table poly(_self, _self.value);
+            auto poly_itr = poly.find(asset_id);
+            poly.erase(poly_itr);
+        }
+    }
 }
 
 // This function requires giving the active permission to the eosio.code permission

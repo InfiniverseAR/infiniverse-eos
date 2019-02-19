@@ -147,5 +147,9 @@ CONTRACT infiniverse : public contract
 
     void assert_vectors_within_bounds(const vector3& position, const vector3& orientation, const vector3& scale);
 
+    void delete_persistents_from_land(const uint64_t& land_id);
+
+    void delete_poly(const persistent_table& persistents, const uint64_t& source, const uint64_t& asset_id, const uint128_t& source_and_asset_id);
+
     void transfer_inf(name from, name to, asset quantity, std::string memo);
 };
